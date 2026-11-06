@@ -1,0 +1,15 @@
+# 레포에 커밋되는 프로파일입니다. 값은 전부 환경변수에서 옵니다 — 비밀값은 여기에 없습니다.
+# 로컬: .env 를 export 한 뒤 `dbt parse` / `dbt build`
+# CI:   dbt parse 는 접속하지 않으므로 기본값으로 충분합니다.
+seoul_city_data_pipeline:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: "{{ env_var('PGHOST', 'localhost') }}"
+      port: "{{ env_var('PGPORT', '5432') | int }}"
+      user: "{{ env_var('PGUSER', 'cityops') }}"
+      password: "{{ env_var('PGPASSWORD', '') }}"
+      dbname: "{{ env_var('PGDATABASE', 'cityops') }}"
+      schema: "{{ env_var('DBT_SCHEMA', 'dbt_dev') }}"
+      threads: 4

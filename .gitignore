@@ -15,15 +15,11 @@ venv/
 .ruff_cache/
 *.egg-info/
 
-# Java / Gradle (W2 Collector)
-build/
-.gradle/
-target/
-
-# Spark
-spark-warehouse/
-metastore_db/
-derby.log
+# dbt — package-lock.yml 은 재현성을 위해 커밋합니다
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+dbt/.user.yml
 
 # Airflow (W4)
 airflow.db

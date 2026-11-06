@@ -1,0 +1,19 @@
+version: 2
+
+models:
+  - name: int_station_current
+    description: >
+      그레인 (station_id). dim_station snapshot 의 소스입니다 (decisions.md D3 ③).
+      "현재 운영중"은 소스가 주는 사실이 아닙니다 — 마스터에 운영상태 컬럼이 없고
+      신설·폐쇄는 bikeList 의 등장·소멸로만 나타납니다.
+    columns:
+      - name: station_id
+        data_tests: [unique, not_null]
+      - name: station_name
+        description: "SCD2 의 유일한 추적 대상 (check_cols)."
+        data_tests: [not_null]
+      - name: gu_name
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: "{{ var('seoul_gu_names') + ['미매칭'] }}"

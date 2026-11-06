@@ -1,0 +1,47 @@
+name: dbt CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# 현재 단계(W1)의 CI 범위는 "정적 검증"입니다.
+#   dbt deps + dbt parse  →  모델 참조·그레인 테스트 선언·yml 문법·Jinja 를 전부 검증합니다.
+#                            DB 접속은 하지 않습니다.
+#
+# 아직 넣지 않은 것과 그 이유:
+#   dbt build (postgres service + sql/migrations)  →  W3 에서 추가합니다.
+#     로컬에서는 이미 돌려서 44 PASS / 1 ERROR 를 확인했고, 그 1건은 설계된 실패입니다
+#     (공휴일 seed 가 비어 있어 assert_holiday_seed_covers_dim_date 가 빌드를 세움).
+#     seed 를 채우기 전에 이 잡을 넣으면 CI 가 상시 빨간불이 되고, 통과시키려고
+#     그 테스트를 제외하면 테스트를 둔 이유가 없어집니다.
+
+jobs:
+  parse:
+    name: dbt parse (정적 검증)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dbt
+    env:
+      DBT_PROFILES_DIR: ${{ github.workspace }}/dbt
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dbt
+        # dbt-postgres 의 최신이 1.11.0 이라 dbt-core 도 1.11 대로 맞춥니다
+        # (core 1.12 는 나와 있지만 postgres 어댑터가 아직 따라오지 않았습니다).
+        run: pip install "dbt-core~=1.11.0" "dbt-postgres==1.11.0"
+
+      - name: dbt deps
+        run: dbt deps
+
+      - name: dbt parse
+        # deprecation 경고까지 전부 드러냅니다. 현재 0건이고, 0건을 유지하는 것이 기준입니다.
+        run: dbt parse --no-partial-parse --show-all-deprecations

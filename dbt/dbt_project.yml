@@ -1,0 +1,67 @@
+name: seoul_city_data_pipeline
+version: "0.1.0"
+config-version: 2
+
+profile: seoul_city_data_pipeline
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+snapshot-paths: ["snapshots"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+vars:
+  # dim_date 생성 범위. 공휴일 seed가 이 범위를 덮지 못하면
+  # tests/assert_holiday_seed_covers_dim_date.sql 가 빌드를 실패시킵니다 (decisions.md D5).
+  # ⚠️ dbt_utils.date_spine 의 end_date 는 **배타적**입니다. 끝날을 그대로 적으면
+  #    마지막 하루가 조용히 빠집니다 (2027-12-31 로 뒀을 때 729행 = 하루 부족).
+  dim_date_start: "2026-01-01"
+  dim_date_end_exclusive: "2028-01-01"
+
+  # 자치구 25개. 여기에 없는 토큰은 '미매칭' 버킷으로 갑니다 (decisions.md D6).
+  seoul_gu_names:
+    ["종로구", "중구", "용산구", "성동구", "광진구", "동대문구", "중랑구", "성북구",
+     "강북구", "도봉구", "노원구", "은평구", "서대문구", "마포구", "양천구", "강서구",
+     "구로구", "금천구", "영등포구", "동작구", "관악구", "서초구", "강남구", "송파구", "강동구"]
+
+  # 달력일 경계만 KST. 저장은 전부 UTC (decisions.md D1).
+  calendar_timezone: "Asia/Seoul"
+
+models:
+  seoul_city_data_pipeline:
+    staging:
+      +schema: staging
+      +materialized: view
+    intermediate:
+      +schema: intermediate
+      +materialized: view
+    core:
+      +schema: core
+      +materialized: table
+    # mart 는 W4 산출물입니다. 모델이 없는 경로를 미리 설정하면 dbt 가
+    # "unused configuration path" 경고를 내므로 그때 추가합니다.
+
+seeds:
+  seoul_city_data_pipeline:
+    +schema: seed
+    # 두 seed 는 현재 헤더만 있습니다. 행이 없으면 dbt 가 타입을 추론할 수 없으므로
+    # 명시합니다 — 특히 lat/lon 을 text 로 만들면 0.0 → NULL 변환과 범위 테스트가
+    # 조용히 무력화됩니다.
+    seed_station_master:
+      +column_types:
+        station_id: text
+        addr1: text
+        addr2: text
+        lat: numeric
+        lon: numeric
+    seed_holiday:
+      +column_types:
+        date_key: date
+        holiday_name: text
+
+snapshots:
+  seoul_city_data_pipeline:
+    +target_schema: snapshots

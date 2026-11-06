@@ -1,0 +1,170 @@
+# 아직 모델이 없는 계층의 그레인 테스트 — 미리 작성해 둔 것입니다.
+#
+# ⚠️ 이 파일은 dbt 가 읽지 않습니다. docs/ 아래에 있고 model-paths 밖입니다.
+#    존재하지 않는 모델을 참조하는 schema.yml 은 dbt parse 를 실패시키므로,
+#    모델이 생기는 주차에 해당 블록을 dbt/models/{core,mart}/schema.yml 로
+#    옮겨 붙이는 방식으로 씁니다.
+#
+# 왜 미리 쓰는가: 확정 규칙이 "unique_combination_of_columns 가 schema.yml 에
+# **미리** 작성"이고, 커밋 순서가 그 증거입니다. 데이터를 먼저 넣고 테스트를
+# 나중에 맞추면 테스트는 "현재 데이터가 이렇다"는 서술이 되고, 틀린 적재를
+# 잡아내는 장치가 아니게 됩니다.
+#
+# 그레인 튜플의 출처는 erd.md §1 표입니다. 여기서 다시 정하지 않았습니다.
+
+version: 2
+
+models:
+  # ── core — W3 ─────────────────────────────────────────────────────────────
+  - name: fct_station_snapshot
+    description: >
+      periodic snapshot fact. 그레인 (station_id, slot_ts).
+      semi-additive — 대여소 축 합산은 유효하고 시간 축 합산은 금지입니다 (erd.md §3).
+      결측은 행의 부재로 표현합니다. 0 으로 메우면 가짜 재고가 생깁니다.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [station_id, slot_ts]
+    columns:
+      - name: station_id
+        description: "FK dim_station.station_id (자연키). station_sk 가 아닙니다."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_station')
+                field: station_id
+      - name: slot_ts
+        data_tests: [not_null]
+      - name: date_key
+        description: "(slot_ts AT TIME ZONE 'Asia/Seoul')::date — KST 는 이 한 지점에만."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: parking_bike_cnt
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments: { min_value: 0, inclusive: true }
+      - name: rack_tot_cnt
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments: { min_value: 0, inclusive: true }
+
+  - name: fct_station_flow
+    description: >
+      transaction fact. 그레인 (station_id, slot_ts) — slot_ts 는 구간의 종료 슬롯.
+      fully additive. delta = 0 슬롯도 행을 만듭니다 (확정 규칙).
+      윈도우는 PARTITION BY station_id 입니다 — station_sk 로 잡으면 SCD2 버전
+      경계에서 시계열이 끊깁니다 (decisions.md D4).
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [station_id, slot_ts]
+      # 추정치의 정의가 코드와 일치하는지 봅니다: est_rentals = max(-delta, 0)
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "est_rentals = greatest(-delta_bikes, 0)"
+          config:
+            where: "prev_slot_present"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "est_returns = greatest(delta_bikes, 0)"
+          config:
+            where: "prev_slot_present"
+      # 이전 슬롯이 결측이면 delta 는 NULL 이어야 합니다. 0 으로 메우면 가짜 반납이 생깁니다.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "delta_bikes is null"
+          config:
+            where: "not prev_slot_present"
+    columns:
+      - name: station_id
+        data_tests: [not_null]
+      - name: slot_ts
+        data_tests: [not_null]
+      - name: prev_slot_present
+        data_tests: [not_null]
+
+  - name: fct_weather_hourly
+    description: "그레인 (stn_id, obs_ts). 가산성은 측정값별로 다릅니다 (erd.md §3)."
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [stn_id, obs_ts]
+    columns:
+      - name: stn_id
+        data_tests: [not_null]
+      - name: obs_ts
+        data_tests: [not_null]
+      - name: date_key
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: ta
+        description: >
+          소스 QC 플래그가 깨끗한 행에만 범위를 적용합니다. 플래그가 붙은 관측에
+          본인 룰을 또 걸면 같은 사실에 신호가 두 개가 됩니다.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments: { min_value: -30, max_value: 45 }
+              # where 는 config 에. 플래그가 NULL(정상)인 행만 봅니다.
+          # ↑ 적용 시 config: { where: "ta_qcflag is null" } 를 함께 넣으세요.
+
+  # ── mart — W4 ─────────────────────────────────────────────────────────────
+  - name: mart_station_hourly
+    description: >
+      그레인 (station_id, hour_ts). semi-additive 측정값의 시간 축 집계는
+      합계가 아니라 평균·최대·최소·품절 슬롯 수입니다.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [station_id, hour_ts]
+      # 완결성: 10분 주기면 시간당 6슬롯이 기대값입니다.
+      # 확정 임계 — warn 90% / error 70%. 측정 전에 고정한 값입니다.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "observed_slot_cnt >= 6 * 0.9"
+          config:
+            severity: warn
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "observed_slot_cnt >= 6 * 0.7"
+          config:
+            severity: error
+    columns:
+      - name: observed_slot_cnt
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments: { min_value: 1, max_value: 6, inclusive: true }
+
+  - name: mart_gu_daily
+    description: >
+      그레인 (gu_name, date_key). occupancy_rate = Σparking ÷ Σrack 이고
+      shared 의 평균이 아닙니다. rack_tot_cnt = 0 인 대여소는 분모에서 제외합니다.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [gu_name, date_key]
+      # 미매칭률 상한은 여기 두지 않습니다. 이 파일은 model-paths 밖이라 dbt 가
+      # 읽지 않으므로, 여기 적힌 안전장치는 **실행되지 않습니다.** 자리표시자
+      # (`expression: "1 = 1"`)를 두었더니 D6 의 근거가 공집합이 됐습니다 (PAR-17 지적 ①).
+      # 대여소 단계 상한은 dbt 가 실행하는 위치로 옮겼습니다:
+      #   dbt/tests/assert_unmatched_gu_rate_within_cap.sql (사전 등록 상한 10%)
+      # 날짜 그레인 버전(자치구별·일별)은 이 모델이 생기는 주차에 실측값으로 추가하세요.
+      # 그때까지 이 칸을 통과하는 테스트로 메우지 마십시오.
+    columns:
+      - name: occupancy_rate
+        description: >
+          accepted_range(0, 100) 를 걸지 마세요. 380% 를 실제로 관측했습니다 —
+          거치대보다 자전거가 많은 상태는 정상입니다.
+      - name: date_key
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key

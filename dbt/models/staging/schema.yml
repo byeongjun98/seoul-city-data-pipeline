@@ -1,0 +1,76 @@
+version: 2
+
+# 그레인은 컬럼 튜플입니다 (erd.md §1). 산문으로 적으면 유일성 테스트를
+# 엉뚱한 컬럼에 걸게 됩니다. 이 파일은 데이터보다 먼저 커밋됩니다 —
+# 커밋 순서가 "테스트를 먼저 썼다"의 증거입니다.
+#
+# 문법: dbt 1.11 기준 `data_tests:` + 인자는 `arguments:` 아래.
+#       구문법(`tests:` + 평면 인자)은 파싱되지만 deprecation 경고를 냅니다.
+
+models:
+  - name: stg_bike_status
+    description: "그레인 (station_id, slot_ts). shared 제거됨."
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [station_id, slot_ts]
+    columns:
+      - name: station_id
+        data_tests: [not_null]
+      - name: slot_ts
+        description: "10분 floor, UTC 저장. 수집기가 계산해 넣습니다 — 소스에 관측시각 필드가 없습니다."
+        data_tests: [not_null]
+      - name: parking_bike_cnt
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments: { min_value: 0, inclusive: true }
+      - name: rack_tot_cnt
+        description: "비율의 분모. 24h 안에 플랩하므로 차원이 아니라 fact 측정값입니다."
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments: { min_value: 0, inclusive: true }
+      - name: station_no
+        description: "명칭 접두에서 추출. 실패 시 NULL — not_null 을 걸지 않습니다."
+
+  - name: stg_weather_hourly
+    description: "그레인 (stn_id, obs_ts). 전 측정값 nullable."
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [stn_id, obs_ts]
+    columns:
+      - name: stn_id
+        data_tests: [not_null]
+      - name: obs_ts
+        description: "ASOS tm(KST) → UTC 변환 결과."
+        data_tests: [not_null]
+      - name: ts_qcflg
+        description: "소스 철자 유지 (tsQcflg). 이 컬럼이 전부 NULL 이면 리네임 맵을 생성한 것입니다."
+
+  - name: stg_station_master
+    description: "그레인 (station_id). seed 출처. SCD2 추적 대상이 아닙니다."
+    columns:
+      - name: station_id
+        data_tests: [unique, not_null]
+      - name: gu_name
+        description: "addr1 두번째 토큰. 25개 목록에 없으면 '미매칭'."
+        data_tests:
+          - not_null
+          # '미매칭' 을 포함시킵니다. 제외하면 상시 빨간불이 되고, 상시 실패하는
+          # 테스트는 아무도 보지 않게 됩니다 (decisions.md D6).
+          # "미매칭이 너무 많은가" 는 양을 보는 상한 테스트가 봅니다:
+          #   tests/assert_unmatched_gu_rate_within_cap.sql (사전 등록 상한 10%)
+          # 그 테스트를 지우면 이 accepted_values 는 미매칭을 무한히 허용합니다.
+          - accepted_values:
+              arguments:
+                values: "{{ var('seoul_gu_names') + ['미매칭'] }}"
+      - name: lat
+        description: "0.0 센티넬은 NULL 로 변환됨."
+        data_tests:
+          # 범위 테스트가 0.0 센티넬과 오타 좌표를 같이 잡습니다.
+          - dbt_utils.accepted_range:
+              arguments: { min_value: 37.4, max_value: 37.7 }
+      - name: lon
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments: { min_value: 126.7, max_value: 127.2 }

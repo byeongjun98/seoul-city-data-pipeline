@@ -1,0 +1,4 @@
+packages:
+  # unique_combination_of_columns · accepted_range · date_spine · expression_is_true
+  - package: dbt-labs/dbt_utils
+    version: [">=1.3.0", "<2.0.0"]

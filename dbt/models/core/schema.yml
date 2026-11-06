@@ -1,0 +1,53 @@
+version: 2
+
+models:
+  - name: dim_station
+    description: >
+      SCD2. 그레인 (station_sk), 자연키+유효기간 (station_id, valid_from).
+      시점 정합 조회만 유효기간 범위 조건을 씁니다 — 마트 대부분은 is_current 입니다.
+      시계열 윈도우는 반드시 PARTITION BY station_id 입니다 (erd.md §5).
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [station_id, valid_from]
+      # 같은 자연키에 현재 행이 둘 있으면 SCD2 가 깨진 것입니다.
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [station_id, is_current]
+          config:
+            where: "is_current"
+    columns:
+      - name: station_sk
+        description: "snapshot 의 dbt_scd_id (text). 버전 행 식별자이고 fact 는 참조하지 않습니다."
+        data_tests: [unique, not_null]
+      - name: station_id
+        description: "자연키 ST-xxxx. 버전 간 불변 — fact 조인·윈도우 파티션은 이 컬럼."
+        data_tests: [not_null]
+      - name: valid_from
+        data_tests: [not_null]
+      - name: gu_name
+        description: >
+          '미매칭' 허용은 decisions.md D6. 양의 상한은
+          tests/assert_unmatched_gu_rate_within_cap.sql 가 봅니다.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: "{{ var('seoul_gu_names') + ['미매칭'] }}"
+
+  - name: dim_date
+    description: "그레인 (date_key) — KST 달력일. 전 컬럼 NOT NULL."
+    columns:
+      - name: date_key
+        data_tests: [unique, not_null]
+      - name: day_of_week
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments: { min_value: 1, max_value: 7, inclusive: true }
+      - name: is_holiday
+        description: "출처 seeds/seed_holiday.csv. 범위 초과는 singular test 가 잡습니다."
+        data_tests: [not_null]
+      - name: season
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["봄", "여름", "가을", "겨울"]

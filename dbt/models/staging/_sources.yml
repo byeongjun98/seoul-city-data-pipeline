@@ -1,0 +1,36 @@
+version: 2
+
+sources:
+  - name: raw
+    database: "{{ env_var('PGDATABASE', 'cityops') }}"
+    schema: raw
+    description: >
+      로더가 S3 에서 COPY 로 넣는 랜딩 계층. DDL 은 sql/migrations/001_landing.sql 이
+      소유하고 dbt 는 선언만 합니다 (decisions.md D4). 그레인 유일성은 테이블 PK 가
+      보장하므로 여기에 dbt 유일성 테스트를 중복해서 걸지 않습니다.
+
+    tables:
+      - name: bike_status
+        description: "그레인 (station_id, slot_ts). PK 제약이 멱등 적재의 근거입니다."
+        loaded_at_field: fetched_at
+        freshness:
+          # 수집 주기 10분. 30분이면 2슬롯 연속 결측이고, 1시간이면 수집이 죽었습니다.
+          warn_after: { count: 30, period: minute }
+          error_after: { count: 60, period: minute }
+        columns:
+          - name: shared
+            description: >
+              소스가 계산해 준 round(parking / rack * 100) 정수 비율. 380% 를 실제로
+              관측했습니다 — 범위 테스트를 걸면 정상 데이터에서 상시 실패합니다.
+              원문 보존용이고 staging 에서 떨어뜨립니다 (erd.md §3).
+
+      - name: weather_hourly
+        description: "그레인 (stn_id, obs_ts). ASOS 시간자료. QC 플래그 9종 보존."
+        loaded_at_field: fetched_at
+        freshness:
+          # D-1 배치라 하루 한 번만 들어옵니다.
+          warn_after: { count: 36, period: hour }
+          error_after: { count: 72, period: hour }
+        columns:
+          - name: ts_qcflg
+            description: "소스 철자가 tsQcflg (a 없음). 리네임 맵을 생성하지 말고 명시하세요."

@@ -1,0 +1,34 @@
+version: 2
+
+# ⚠️ 두 seed 는 현재 **헤더만 있습니다.** 채우는 것은 사용자 작업입니다.
+#    CSV 에는 주석을 달 수 없습니다 (dbt 가 데이터 행으로 읽습니다) — decisions.md D5 가
+#    "csv 에 출처를 주석으로" 라고 적었는데 그건 성립하지 않아서, 출처를 여기 description 에
+#    적는 방식으로 바꿨습니다.
+
+seeds:
+  - name: seed_station_master
+    description: >
+      공공자전거 대여소 마스터. 출처: 서울 열린데이터광장 bikeStationMaster
+      (정식 키로 전수 수집 후 CSV 로 고정). 필드는 RNTLS_ID·ADDR1·ADDR2·LAT·LOT 5개뿐이고
+      **대여소 명칭이 없습니다** — 명칭은 실시간 응답에서 옵니다 (decisions.md D3).
+      결측 좌표가 NULL 이 아니라 0.0 으로 들어오므로 staging 에서 NULLIF 합니다.
+      표본 5건 중 1건에서 관측 — 전체 3,434건 중 몇 건인지는 전수 확인 항목입니다.
+    columns:
+      - name: station_id
+        description: "RNTLS_ID. ST-xxxx 형태. bikeList.stationId 와 같은 체계 (등가 조인 가능)."
+        data_tests: [unique, not_null]
+
+  - name: seed_holiday
+    description: >
+      관공서 공휴일. 출처: 행정안전부 관공서의 공휴일에 관한 규정 고시.
+      **채울 때 발행일(고시일)을 이 description 에 함께 적으세요** — 출처 없는 플래그는
+      테스트를 거짓말하게 만듭니다.
+      범위는 수집 기간 + 1년. dim_date 가 이 범위를 넘으면
+      tests/assert_holiday_seed_covers_dim_date.sql 가 빌드를 실패시킵니다 (decisions.md D5).
+      park98 이 채우지 않았습니다 — 음력 기반 공휴일(설날·부처님오신날·추석)은
+      확인 없이 적으면 조용히 틀리는 종류의 데이터입니다.
+    columns:
+      - name: date_key
+        data_tests: [unique, not_null]
+      - name: holiday_name
+        data_tests: [not_null]
