@@ -1,0 +1,44 @@
+# 비밀값
+.env
+*.pem
+*.key
+
+# 측정·실행 산출물 (docs/ 아래 기록된 결과만 커밋)
+.measurements/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Java / Gradle (W2 Collector)
+build/
+.gradle/
+target/
+
+# Spark
+spark-warehouse/
+metastore_db/
+derby.log
+
+# Airflow (W4)
+airflow.db
+airflow-webserver.pid
+logs/
+
+# 데이터 — 샘플 응답만 커밋하고 실제 적재 데이터는 제외
+data/bronze/
+data/silver/
+data/gold/
+data/raw/
+*.parquet
+
+# IDE / OS / 에이전트 도구
+.idea/
+.vscode/
+.DS_Store
+.claude/
