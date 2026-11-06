@@ -76,6 +76,7 @@ make migrate && make build
 |---|---|
 | `docs/model/erd.md` | Mermaid ERD — 물리 키 · 카디널리티 · SCD2 유효기간 · 그레인 튜플. lineage 는 `dbt docs` 가 만들므로 중복하지 않습니다 |
 | `docs/model/decisions.md` | 모델 결정 7건 + 추가 4건. 선택지 · 트레이드오프 · 근거 |
+| `docs/collector/design.md` | W2 수집기 설계 — 재시도 분류표 · 페이지네이션 종료 조건 · S3 키 규칙. **수집기 코드는 전용 리포에 분리**합니다(약관 리스크를 리포 단위로 가둠, §1) |
 | `dbt/` | dbt 프로젝트. staging 3 · intermediate 1 · snapshot 1 · core 2 |
 | `sql/migrations/001_landing.sql` | 랜딩 테이블 DDL. **dbt 가 소유하지 않습니다** — dbt 가 소유하면 `dbt run` 이 랜딩을 재생성할 수 있고 멱등 적재의 PK 가 dbt 실행에 걸립니다 |
 | `scripts/smoke_s3.py` | S3 API 호환성 확인 (PUT/GET/LIST/DELETE). 표준 라이브러리만으로 SigV4 서명 — 받은 사람이 추가 설치 없이 확인할 수 있게 하려고 의존성을 두지 않았습니다 |
